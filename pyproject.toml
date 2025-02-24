@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "cf-rosetta-e2e-tests"
+version = "0.0.1"
+description = "End-to-end tests for cardano-rosetta-java implementation"
+authors = ["Lincon Vidal <lincon.vidal@cardanofoundation.org>"]
+
+[tool.poetry.dependencies]
+python = ">=3.8.1,<4.0"
+pytest = "^7.0.0"
+pytest-asyncio = "^0.18.0"
+pytest-xdist = "^2.5.0"
+python-dotenv = "^0.19.0"
+requests = "^2.28.0"
+pycardano = "^0.12.3"
+typing-extensions = "^4.0.0"
+assertpy = "^1.1"
+mnemonic = "^0.21"
+cbor2 = "^5.4.0"
+
+[tool.poetry.dev-dependencies]
+black = "^22.3.0"
+flake8 = "^4.0.1"
+mypy = "^0.950"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:pydantic.*:",
+    "ignore::DeprecationWarning:pytest_asyncio.*:"
+]
+asyncio_mode = "strict"
+python_files = "test_*.py"
+addopts = "-v --tb=short --log-cli-level=INFO --showlocals --durations=3" 
