@@ -6,16 +6,16 @@ authors = ["Lincon Vidal <lincon.vidal@cardanofoundation.org>"]
 
 [tool.poetry.dependencies]
 python = ">=3.8.1,<4.0"
-pytest = "^7.0.0"
-pytest-asyncio = "^0.18.0"
-pytest-xdist = "^2.5.0"
-python-dotenv = "^0.19.0"
-requests = "^2.28.0"
+pytest = "^8.3.4"
+pytest-asyncio = "^0.24.0"
+pytest-xdist = "^3.5.0"
+python-dotenv = "^1.0.1"
+requests = "^2.31.0"
 pycardano = "^0.12.3"
-typing-extensions = "^4.0.0"
+typing-extensions = "^4.11.0"
 assertpy = "^1.1"
 mnemonic = "^0.21"
-cbor2 = "^5.4.0"
+cbor2 = "^5.6.0"
 
 [tool.poetry.dev-dependencies]
 black = "^22.3.0"
