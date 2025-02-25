@@ -1,7 +1,7 @@
 import pytest
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("test")
 
 
 def test_send_ada(rosetta_client, test_wallet):
@@ -94,12 +94,16 @@ def test_send_ada(rosetta_client, test_wallet):
     tx_id = submit_response["transaction_identifier"]["hash"]
     assert tx_id, "Empty transaction hash!"
 
+    # Calculate the actual fee (input amount - sum of all outputs)
+    output_values = [int(output["value"]) for output in outputs]
+    actual_fee = input_value - sum(output_values)
+
     # Log only the essential transaction information at INFO level
     logger.info(
         "Transaction submitted successfully - ID: %s (Amount: %d lovelace, Fee: %d lovelace)",
         tx_id,
         transfer_amount,
-        estimated_fee,
+        actual_fee,
     )
 
     # Log detailed breakdown at DEBUG level
@@ -107,7 +111,7 @@ def test_send_ada(rosetta_client, test_wallet):
     logger.debug("- Input UTXO: %s", first_utxo["coin_identifier"]["identifier"])
     logger.debug("- Input amount: %d lovelace", input_value)
     logger.debug("- Transfer amount: %d lovelace", transfer_amount)
-    logger.debug("- Fee: %d lovelace", estimated_fee)
+    logger.debug("- Fee: %d lovelace", actual_fee)
     logger.debug("- Change amount: %d lovelace", change_amount)
 
     # Verify transaction hash

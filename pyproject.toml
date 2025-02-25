@@ -18,20 +18,34 @@ mnemonic = "^0.21"
 cbor2 = "^5.6.0"
 
 [tool.poetry.dev-dependencies]
-black = "^22.3.0"
-flake8 = "^4.0.1"
-mypy = "^0.950"
+black = "^24.4.0"
+flake8 = "^7.0.0"
+mypy = "^1.9.0"
+
+# Define convenient test runner scripts
+[tool.poetry.scripts]
+test = "pytest:main"
+test-verbose = "pytest:main(['--verbose'])"
+test-debug = "pytest:main(['--verbose', '--log-cli-level=DEBUG'])"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+# Pytest configuration with improved organization
 [tool.pytest.ini_options]
+# Test discovery
 testpaths = ["tests"]
-filterwarnings = [
-    "ignore::DeprecationWarning:pydantic.*:",
-    "ignore::DeprecationWarning:pytest_asyncio.*:"
-]
-asyncio_mode = "strict"
 python_files = "test_*.py"
-addopts = "-v --tb=short --log-cli-level=INFO --showlocals --durations=3" 
+
+# Asyncio configuration
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+# Logging configuration
+log_cli = false
+log_cli_level = "INFO"
+log_level = "DEBUG"
+
+# Execution options - all in one line for clarity
+addopts = "--no-header --tb=short --no-summary -v --capture=no" 
