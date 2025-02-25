@@ -172,7 +172,7 @@ class RosettaClient:
             metadata = metadata_response.json()
 
             # Extract suggested fee if available and adjust outputs
-            suggested_fee_info = metadata.get("metadata", {}).get("suggested_fee", [])
+            suggested_fee_info = metadata.get("suggested_fee", [])
             if suggested_fee_info:
                 suggested_fee = int(suggested_fee_info[0]["value"])
 
@@ -183,9 +183,9 @@ class RosettaClient:
                 total_output = sum(int(output_data["value"]) for output_data in outputs)
 
                 # Verify we have enough to cover the fee
-                if total_input < (total_output + suggested_fee):
+                if suggested_fee > total_input:
                     raise ValidationError(
-                        f"Insufficient funds to cover fee: "
+                        f"Fee is greater than the total input: "
                         f"inputs={total_input}, outputs={total_output}, fee={suggested_fee}"
                     )
 

@@ -51,7 +51,7 @@ def test_send_ada(rosetta_client, test_wallet):
     }
 
     # Calculate change amount considering estimated fee
-    change_amount = input_value - transfer_amount - estimated_fee
+    change_amount = input_value - transfer_amount
 
     # Define outputs with estimated fee
     outputs = [
