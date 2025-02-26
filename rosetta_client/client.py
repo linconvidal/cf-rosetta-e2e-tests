@@ -440,6 +440,9 @@ class RosettaClient:
             )
             preprocess_data = preprocess_response.json()
 
+            # Initialize suggested fee info
+            suggested_fee_info = []
+
             # Step 2: /construction/metadata
             # Fetches network-specific metadata (e.g. recent block hash, suggested fee)
             metadata_payload = {
@@ -493,6 +496,11 @@ class RosettaClient:
                 "operations": operations,
                 "metadata": metadata["metadata"],
             }
+
+            # Add suggested fee to the payloads request if available
+            if suggested_fee_info:
+                payloads_payload["suggested_fee"] = suggested_fee_info
+
             self._log_request("/construction/payloads", payloads_payload)
 
             payloads_response = self.request_debugger.post(
