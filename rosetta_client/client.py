@@ -330,12 +330,15 @@ class RosettaClient:
     def network_status(self) -> Dict:
         """Get current network status"""
         try:
+            status_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "metadata": {},
+            }
+            self._log_request("/network/status", status_payload)
+
             response = self.request_debugger.post(
                 f"{self.endpoint}/network/status",
-                json={
-                    "network_identifier": self._get_network_identifier(),
-                    "metadata": {},
-                },
+                json=status_payload,
                 headers=self.headers,
             )
             return response.json()
@@ -345,12 +348,15 @@ class RosettaClient:
     def get_balance(self, address: str) -> Dict:
         """Get account balance"""
         try:
+            balance_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "account_identifier": {"address": address},
+            }
+            self._log_request("/account/balance", balance_payload)
+
             response = self.request_debugger.post(
                 f"{self.endpoint}/account/balance",
-                json={
-                    "network_identifier": self._get_network_identifier(),
-                    "account_identifier": {"address": address},
-                },
+                json=balance_payload,
                 headers=self.headers,
             )
             return response.json()
@@ -360,13 +366,16 @@ class RosettaClient:
     def get_utxos(self, address: str) -> List[Dict]:
         """Get UTXOs for an address"""
         try:
+            coins_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "account_identifier": {"address": address},
+                "include_mempool": True,
+            }
+            self._log_request("/account/coins", coins_payload)
+
             response = self.request_debugger.post(
                 f"{self.endpoint}/account/coins",
-                json={
-                    "network_identifier": self._get_network_identifier(),
-                    "account_identifier": {"address": address},
-                    "include_mempool": True,
-                },
+                json=coins_payload,
                 headers=self.headers,
             )
             data = response.json()
@@ -516,12 +525,15 @@ class RosettaClient:
     def submit_transaction(self, signed_transaction: str) -> Dict:
         """Submit a signed transaction"""
         try:
+            submit_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "signed_transaction": signed_transaction,
+            }
+            self._log_request("/construction/submit", submit_payload)
+
             response = self.request_debugger.post(
                 f"{self.endpoint}/construction/submit",
-                json={
-                    "network_identifier": self._get_network_identifier(),
-                    "signed_transaction": signed_transaction,
-                },
+                json=submit_payload,
                 headers=self.headers,
             )
             return response.json()
@@ -663,13 +675,16 @@ class RosettaClient:
             Response from the /construction/combine endpoint containing the signed transaction
         """
         try:
+            combine_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "unsigned_transaction": unsigned_transaction,
+                "signatures": signatures,
+            }
+            self._log_request("/construction/combine", combine_payload)
+
             response = self.request_debugger.post(
                 f"{self.endpoint}/construction/combine",
-                json={
-                    "network_identifier": self._get_network_identifier(),
-                    "unsigned_transaction": unsigned_transaction,
-                    "signatures": signatures,
-                },
+                json=combine_payload,
                 headers=self.headers,
             )
             return response.json()
