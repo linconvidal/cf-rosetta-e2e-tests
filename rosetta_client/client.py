@@ -506,10 +506,6 @@ class RosettaClient:
                 "metadata": metadata["metadata"],
             }
 
-            # Add suggested fee to the payloads request if available
-            if suggested_fee_info:
-                payloads_payload["suggested_fee"] = suggested_fee_info
-
             self._log_request("/construction/payloads", payloads_payload)
 
             payloads_response = self.request_debugger.post(
