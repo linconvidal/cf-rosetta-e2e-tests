@@ -686,3 +686,79 @@ class RosettaClient:
             return response.json()
         except requests.exceptions.RequestException as err:
             self._handle_request_error(err, "Combine transaction")
+
+    def get_block(self, block_identifier: Optional[Dict] = None) -> Dict:
+        """
+        Get a block by its identifier (hash or index)
+
+        Args:
+            block_identifier: Dict with either 'hash' or 'index' key
+                              If None, gets the latest block
+
+        Returns:
+            Dict containing block data
+        """
+        try:
+            # If no block_identifier is provided, get the latest block
+            if block_identifier is None:
+                status = self.network_status()
+                block_identifier = status.get("current_block_identifier", {})
+
+            # Ensure we have a valid block identifier
+            if not block_identifier or not (
+                "hash" in block_identifier or "index" in block_identifier
+            ):
+                raise ValueError(
+                    "Invalid block identifier. Must contain 'hash' or 'index'"
+                )
+
+            block_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "block_identifier": block_identifier,
+            }
+            self._log_request("/block", block_payload)
+
+            response = self.request_debugger.post(
+                f"{self.endpoint}/block", json=block_payload, headers=self.headers
+            )
+            return response.json()
+        except requests.exceptions.RequestException as err:
+            self._handle_request_error(err, "Get block")
+
+    def get_block_transaction(
+        self, block_identifier: Dict, transaction_hash: str
+    ) -> Dict:
+        """
+        Get a transaction within a specific block
+
+        Args:
+            block_identifier: Dict with either 'hash' or 'index' key
+            transaction_hash: Hash of the transaction to retrieve
+
+        Returns:
+            Dict containing transaction data
+        """
+        try:
+            # Ensure we have a valid block identifier
+            if not block_identifier or not (
+                "hash" in block_identifier or "index" in block_identifier
+            ):
+                raise ValueError(
+                    "Invalid block identifier. Must contain 'hash' or 'index'"
+                )
+
+            tx_payload = {
+                "network_identifier": self._get_network_identifier(),
+                "block_identifier": block_identifier,
+                "transaction_identifier": {"hash": transaction_hash},
+            }
+            self._log_request("/block/transaction", tx_payload)
+
+            response = self.request_debugger.post(
+                f"{self.endpoint}/block/transaction",
+                json=tx_payload,
+                headers=self.headers,
+            )
+            return response.json()
+        except requests.exceptions.RequestException as err:
+            self._handle_request_error(err, "Get block transaction")
