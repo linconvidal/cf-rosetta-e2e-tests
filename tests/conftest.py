@@ -4,6 +4,7 @@ import pytest
 import logging
 import time
 import _pytest.terminal
+import sys
 
 from rosetta_client.client import RosettaClient
 from wallet_utils.pycardano_wallet import PyCardanoWallet
@@ -261,9 +262,23 @@ def pytest_unconfigure(config):
             f"{Style.BLUE}●{Style.RESET} {total_tests} total"
         )
         print("=" * 80)
+
+        # Now restore stdout and close the log file
+        if hasattr(sys, "_original_stdout") and hasattr(sys, "_log_file"):
+            sys.stdout = sys._original_stdout
+            sys._log_file.close()
+            delattr(sys, "_original_stdout")
+            delattr(sys, "_log_file")
     else:
         # No terminal reporter found, just let other hooks run
         yield
+
+        # Still clean up stdout redirection
+        if hasattr(sys, "_original_stdout") and hasattr(sys, "_log_file"):
+            sys.stdout = sys._original_stdout
+            sys._log_file.close()
+            delattr(sys, "_original_stdout")
+            delattr(sys, "_log_file")
 
 
 # Add a simple hook for test section clarity
@@ -367,8 +382,16 @@ def pytest_configure(config):
     )
     handler.setFormatter(formatter)
 
+    # Add a file handler with a simple formatter (no ANSI colors)
+    file_handler = logging.FileHandler("test_output.log", mode="w")
+    file_formatter = logging.Formatter(
+        fmt="%(asctime)s  %(levelname)s  %(name)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    file_handler.setFormatter(file_formatter)
+
     root_logger = logging.getLogger()
-    root_logger.handlers = [handler]
+    root_logger.handlers = [handler, file_handler]  # Add file_handler here
     root_logger.setLevel(logging.DEBUG)
 
     # Silence noisy libraries
@@ -423,3 +446,37 @@ def pytest_plugin_registered(plugin, manager):
         plugin.summary_deselected = lambda: None
         if hasattr(plugin, "print_summary"):
             plugin.print_summary = lambda: None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def redirect_stdout_to_file():
+    class Tee:
+        def __init__(self, original_stdout, file):
+            self.original_stdout = original_stdout
+            self.file = file
+
+        def write(self, message):
+            self.original_stdout.write(message)
+            self.file.write(self.strip_ansi(message))
+
+        def flush(self):
+            self.original_stdout.flush()
+            self.file.flush()
+
+        @staticmethod
+        def strip_ansi(text):
+            import re
+
+            ansi_escape = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+            return ansi_escape.sub("", text)
+
+    original_stdout = sys.stdout
+    log_file = open("test_output.log", "a")
+    sys.stdout = Tee(original_stdout, log_file)
+    yield
+    # Don't restore stdout immediately - let it capture the summary
+    # We'll restore it in pytest_unconfigure after the summary is printed
+
+    # Store these for cleanup in pytest_unconfigure
+    sys._original_stdout = original_stdout
+    sys._log_file = log_file
