@@ -284,11 +284,8 @@ class PyCardanoWallet:
         )
 
         # Further filter to find UTXOs with only ADA (no other assets)
-        ada_only_utxos = [
-            utxo
-            for utxo in utxos
-            if not utxo.get("metadata", {}).get("assets")  # No additional assets
-        ]
+        # Any UTXO with metadata likely contains native assets
+        ada_only_utxos = [utxo for utxo in utxos if "metadata" not in utxo]
 
         if not ada_only_utxos:
             raise ValueError(
@@ -298,3 +295,59 @@ class PyCardanoWallet:
         # Return the UTXO with the smallest amount that meets the requirement
         # This helps prevent UTXO fragmentation
         return min(ada_only_utxos, key=lambda u: int(u["amount"]["value"]))
+
+    def select_multiple_ada_utxos(
+        self,
+        rosetta_client,
+        num_utxos: int,
+        min_total_amount: int = 0,
+        exclude_utxos: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Select multiple ADA-only UTXOs (no native assets).
+
+        Args:
+            rosetta_client: RosettaClient instance to fetch UTXOs
+            num_utxos: Number of UTXOs to select
+            min_total_amount: Minimum total ADA amount required (in lovelace)
+            exclude_utxos: List of UTXO identifiers to exclude
+
+        Returns:
+            List of UTXOs that satisfy the requirements
+
+        Raises:
+            ValueError: If not enough suitable UTXOs found
+        """
+        all_utxos = self.select_utxos(
+            rosetta_client=rosetta_client,
+            min_ada_required=None,  # We'll filter by total amount later
+            exclude_utxos=exclude_utxos,
+        )
+
+        # Filter to ADA-only UTXOs - any UTXO with metadata likely contains native assets
+        ada_only_utxos = [utxo for utxo in all_utxos if "metadata" not in utxo]
+
+        if len(ada_only_utxos) < num_utxos:
+            raise ValueError(
+                f"Not enough ADA-only UTXOs available. Found {len(ada_only_utxos)}, need {num_utxos}"
+            )
+
+        # Sort by value to optimize UTXO selection (smallest first)
+        sorted_utxos = sorted(ada_only_utxos, key=lambda u: int(u["amount"]["value"]))
+
+        # Select UTXOs to meet the minimum amount
+        selected_utxos = []
+        total_amount = 0
+
+        # First try to find UTXOs that together meet the minimum amount
+        for utxo in sorted_utxos:
+            if len(selected_utxos) < num_utxos:
+                selected_utxos.append(utxo)
+                total_amount += int(utxo["amount"]["value"])
+
+        if total_amount < min_total_amount:
+            raise ValueError(
+                f"Selected UTXOs total {total_amount} lovelace, which is less than required {min_total_amount}"
+            )
+
+        return selected_utxos
