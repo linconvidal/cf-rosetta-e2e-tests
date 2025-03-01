@@ -56,6 +56,18 @@ class RequestDebugger:
         # Extract endpoint from URL for easier debugging
         endpoint = url.split("/")[-1] if "/" in url else url
 
+        # Also extract the full path for more detailed logging
+        full_path = ""
+        if "/" in url:
+            # Parse the URL to get the path
+            path_parts = url.split("/")
+            if len(path_parts) > 3:  # http://domain/path
+                full_path = "/" + "/".join(path_parts[3:])
+
+        # Store both in debug_info
+        debug_info["endpoint"] = endpoint
+        debug_info["full_path"] = full_path
+
         # Log the request - now using debug level
         self.logger.debug(
             "\n[REQUEST %s] %s %s", request_id, debug_info["method"], endpoint
@@ -89,17 +101,29 @@ class RequestDebugger:
             # Log response info - using debug level
             status_color = "\033[92m" if response.status_code < 400 else "\033[91m"
             reset_color = "\033[0m"
+            gray_color = "\033[38;5;246m"  # Medium gray
 
             # For INFO level, use a much more compact logging format for requests
             if self.logger.level <= logging.INFO:
+                # Swiss design-inspired minimal format with icons
+                status_icon = "✓" if response.status_code < 400 else "✗"
+
+                # Format duration in seconds if greater than 1000ms
+                if duration_ms >= 1000:
+                    duration_str = f"{duration_ms/1000:.2f} s"
+                else:
+                    duration_str = f"{duration_ms:.2f} ms"
+
                 self.logger.info(
-                    "%s %s - %sStatus: %d%s (%.2f ms)",
+                    "%s  %s%s%s  %s  %s%s%s",
                     debug_info["method"],
-                    endpoint,
                     status_color,
-                    response.status_code,
+                    status_icon,
                     reset_color,
-                    duration_ms,
+                    full_path if full_path else endpoint,
+                    gray_color,
+                    duration_str,
+                    reset_color,
                 )
 
             # Detailed response info only at DEBUG level
@@ -117,7 +141,6 @@ class RequestDebugger:
             content_type = response.headers.get("Content-Type", "")
             debug_info["status_code"] = response.status_code
             debug_info["response_headers"] = dict(response.headers)
-            debug_info["endpoint"] = endpoint
 
             if "application/json" in content_type:
                 try:
@@ -211,70 +234,36 @@ class RequestDebugger:
         RED = "\033[38;5;167m"  # Muted red
         GRAY = "\033[38;5;246m"  # Medium gray
         CYAN = "\033[38;5;109m"  # Muted cyan
-        PURPLE = "\033[38;5;146m"  # Soft purple
         BOLD = "\033[1m"
         RESET = "\033[0m"
 
-        # Print a single, elegant separator before the report begins
-        self.log("info", f"\n{CYAN}{'═' * 80}{RESET}")
-
-        # Header with precise spacing
+        # Print a minimal separator
         self.log(
             "info",
-            f"{CYAN}HTTP SUMMARY{RESET}{GRAY} · Session {stats['session_id']}{RESET}",
+            f"\n{GRAY}⎯⎯⎯ HTTP {stats['count']} requests · {stats['total_duration_ms']:.0f}ms {RESET}",
         )
 
-        # Core metrics presented with clarity and breathing room
-        self.log(
-            "info",
-            f"{BLUE}●{RESET} {GRAY}Requests{RESET}    {BOLD}{stats['count']}{RESET}",
-        )
-        self.log(
-            "info",
-            f"{BLUE}●{RESET} {GRAY}Total time{RESET}  {BOLD}{stats['total_duration_ms']:.2f}ms{RESET}",
-        )
-        self.log(
-            "info",
-            f"{BLUE}●{RESET} {GRAY}Average{RESET}     {BOLD}{stats['avg_duration_ms']:.2f}ms{RESET}",
-        )
-
-        # Status codes in a clean, aligned format
+        # Status codes as minimal icons
         if stats.get("status_codes"):
-            status_msg = f"{BLUE}●{RESET} {GRAY}Status{RESET}      "
+            status_msg = ""
             for code, count in stats["status_codes"].items():
                 code_color = GREEN if code < 400 else RED
-                status_msg += f"{code_color}{code}{RESET}{GRAY}×{count}{RESET}  "
-            self.log("info", status_msg)
+                icon = "✓" if code < 400 else "✗"
+                status_msg += f"{code_color}{icon}{RESET}{count} "
+            if status_msg:
+                self.log("info", f"{GRAY}    {status_msg.strip()}{RESET}")
 
-        # Slowest requests with perfect alignment (only at DEBUG level)
-        if self.logger.level <= logging.DEBUG:
-            slowest = self.get_slowest_requests(3)  # Just top 3 for cleaner output
+        # Slowest requests only in DEBUG level
+        if self.logger.level <= logging.DEBUG and stats["count"] > 0:
+            slowest = self.get_slowest_requests(1)  # Just top 1 for cleaner output
             if slowest:
-                self.log("debug", "")  # Subtle breathing space
-                self.log("debug", f"{PURPLE}SLOWEST REQUESTS{RESET}")
+                endpoint = slowest[0].get("endpoint", "?")
+                duration = slowest[0].get("duration_ms", 0)
+                self.log(
+                    "debug", f"{GRAY}    Slowest: {endpoint} · {duration:.0f}ms{RESET}"
+                )
 
-                for i, req in enumerate(slowest):
-                    endpoint = req.get(
-                        "endpoint", req.get("url", "unknown").split("/")[-1]
-                    )
-                    duration = req.get("duration_ms", 0)
-
-                    # Clean formatting with careful spacing
-                    self.log("debug", f"{GRAY}{i+1}.{RESET} {endpoint}")
-                    self.log(
-                        "debug",
-                        f"   {GRAY}Duration:{RESET} {BOLD}{duration:.2f}ms{RESET}",
-                    )
-
-                    # Show error if any - with subtle indentation
-                    if "error" in req:
-                        self.log(
-                            "debug",
-                            f"   {GRAY}Error:{RESET} {RED}{req['error']}{RESET}",
-                        )
-
-        # Elegant closing separator
-        self.log("info", f"{CYAN}{'═' * 80}{RESET}\n")
+        # No closing separator - keeping it minimal
 
 
 class RosettaClient:
@@ -762,3 +751,56 @@ class RosettaClient:
             return response.json()
         except requests.exceptions.RequestException as err:
             self._handle_request_error(err, "Get block transaction")
+
+    def get_transaction(self, transaction_hash: str) -> Dict:
+        """
+        Get transaction details by hash.
+
+        This method searches for a transaction across blocks by its hash.
+        It first gets the current block and then searches backward through blocks
+        until it finds the transaction or reaches a reasonable search limit.
+
+        Args:
+            transaction_hash: Hash of the transaction to retrieve
+
+        Returns:
+            Dict containing transaction data or None if not found
+        """
+        try:
+            # Get current network status to find the latest block
+            network_status = self.network_status()
+            current_block = network_status.get("current_block_identifier")
+
+            if not current_block:
+                raise ValueError("Could not get current block identifier")
+
+            # Start from the current block and search backward
+            max_blocks_to_search = 20  # Limit the search to avoid excessive API calls
+            current_block_index = int(current_block.get("index", 0))
+
+            for i in range(max_blocks_to_search):
+                block_identifier = {"index": current_block_index - i}
+
+                try:
+                    # Get the block
+                    block_data = self.get_block(block_identifier)
+
+                    # Check if our transaction is in this block
+                    if "block" in block_data and "transactions" in block_data["block"]:
+                        for tx in block_data["block"]["transactions"]:
+                            if tx["transaction_identifier"]["hash"] == transaction_hash:
+                                # Found the transaction, get detailed data
+                                return self.get_block_transaction(
+                                    block_identifier, transaction_hash
+                                )
+                except Exception as e:
+                    # If we can't get a specific block, continue to the next one
+                    continue
+
+            # Transaction not found in the searched blocks
+            return None
+
+        except Exception as e:
+            # Log the error but don't raise it - this allows callers to handle the None return
+            logger.error(f"Error retrieving transaction {transaction_hash}: {str(e)}")
+            return None

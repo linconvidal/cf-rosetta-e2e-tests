@@ -69,37 +69,160 @@ class SwissDesignFormatter(logging.Formatter):
         # Format names with consistent width for grid alignment
         record.name = f"{Style.GRAY}{record.name:<10}{Style.RESET}"
 
-        # Special formatting for HTTP-related logs
-        if hasattr(record, "msg") and isinstance(record.msg, str):
-            msg = record.msg
+        # Create a minimal format for INFO level logs - just the essential message
+        if record.levelno == logging.INFO:
+            # Format HTTP-related logs in a minimal way
+            if hasattr(record, "msg") and isinstance(record.msg, str):
+                msg = record.msg
 
-            # Format HTTP request/response logs with style
-            if "[REQUEST " in msg:
-                # Balance spacing perfectly with a light touch
-                record.msg = f"{Style.CYAN}{Style.HTTP_ICON} {Style.RESET} {msg}"
-            elif "[RESPONSE " in msg:
-                if "Status: 2" in msg or "Status: 3" in msg:
-                    # Success response - subtle but clear indicator
-                    record.msg = f"{Style.GREEN}{Style.HTTP_ICON} {Style.RESET} {msg}"
-                else:
-                    # Error response - visually distinct but not overwhelming
+                # Special formatting for test logs
+                if original_name == "test":
+                    if "Starting" in msg and "transaction test" in msg:
+                        # Make the "Starting test" message stand out with green color
+                        # Apply singular/plural consistency
+                        msg = msg.replace(" with ", " · ")
+                        msg = msg.replace("1 inputs", "1 input")
+                        msg = msg.replace("1 outputs", "1 output")
+                        record.msg = f"{Style.GREEN}{msg}{Style.RESET}"
+                    elif "Transaction submitted successfully" in msg:
+                        # Highlight transaction IDs in a different color
+                        parts = msg.split(" - ID: ")
+                        if len(parts) == 2:
+                            tx_id_part = parts[1].split(" ")[0]
+                            remaining = parts[1][len(tx_id_part) :]
+                            # Add success icon and replace dash with dot separator
+                            record.msg = f"{Style.GREEN}✓ Transaction submitted successfully{Style.RESET} · ID: {Style.CYAN}{tx_id_part}{Style.RESET}{Style.GRAY}{remaining}{Style.RESET}"
+                    elif "Transaction found in block" in msg:
+                        # Highlight block info
+                        parts = msg.split("Transaction found in block ")
+                        if len(parts) == 2:
+                            # Add success icon
+                            record.msg = f"{Style.GREEN}✓ Transaction found in block {Style.CYAN}{parts[1]}{Style.RESET}"
+                    elif "Validating" in msg or "Waiting" in msg:
+                        # Light gray for processing messages
+                        record.msg = f"{Style.GRAY}{msg}{Style.RESET}"
+                    elif "successfully validated" in msg:
+                        # Bold green for success messages with success icon
+                        # Replace parentheses with minimal dot separators for better Swiss design
+                        msg = msg.replace(" (", " · ")
+                        msg = msg.replace(", ", " · ")
+                        msg = msg.replace(")", "")
+                        record.msg = f"{Style.GREEN}{Style.BOLD}✓ {msg}{Style.RESET}"
+
+                # Highly minimal HTTP request/response formatting
+                elif "[REQUEST " in msg:
+                    # Extract method and endpoint
+                    parts = msg.split(" ", 2)
+                    method = parts[1] if len(parts) > 1 else ""
+
+                    # Extract the full endpoint path
+                    endpoint = ""
+                    if len(parts) > 2 and "http" in parts[2]:
+                        url_parts = parts[2].split(" ")[0]  # Get the URL part
+                        # Extract path from URL (e.g., /construction/submit from http://localhost:8082/construction/submit)
+                        if "/" in url_parts:
+                            path_parts = url_parts.split("/")
+                            # Reconstruct the path starting from the 3rd part (after http://domain/)
+                            if len(path_parts) > 3:
+                                endpoint = "/" + "/".join(path_parts[3:])
+
+                    if endpoint:
+                        record.msg = f"{Style.CYAN}{method}{Style.RESET} {Style.GRAY}{endpoint}{Style.RESET}"
+                    else:
+                        record.msg = f"{Style.CYAN}{method}{Style.RESET}"
+                elif "[RESPONSE " in msg:
+                    if "Status: 2" in msg or "Status: 3" in msg:
+                        # Success response - just show status code and timing
+                        status_code = (
+                            msg.split("Status:")[1].strip().split()[0]
+                            if "Status:" in msg
+                            else ""
+                        )
+                        timing = (
+                            msg.split("(")[1].split(")")[0]
+                            if "(" in msg and ")" in msg
+                            else ""
+                        )
+                        record.msg = (
+                            f"{Style.GREEN}✓{Style.RESET} {status_code} · {timing}"
+                        )
+                    else:
+                        # Error response - show status code clearly
+                        status_code = (
+                            msg.split("Status:")[1].strip().split()[0]
+                            if "Status:" in msg
+                            else ""
+                        )
+                        # Try to extract endpoint information for more context
+                        endpoint = ""
+                        if "Endpoint:" in msg:
+                            endpoint_parts = msg.split("Endpoint:")
+                            if len(endpoint_parts) > 1:
+                                endpoint = endpoint_parts[1].strip()
+
+                        if endpoint:
+                            record.msg = (
+                                f"{Style.RED}✗{Style.RESET} {status_code} · {endpoint}"
+                            )
+                        else:
+                            record.msg = f"{Style.RED}✗{Style.RESET} {status_code}"
+                elif "[ERROR " in msg:
+                    # Extract just the core error message
+                    error_msg = msg.split(" ", 1)[1] if " " in msg else msg
+                    # Make error messages more concise by extracting key information
+                    if " - " in error_msg:
+                        parts = error_msg.split(" - ")
+                        error_type = parts[0].strip()
+                        error_detail = parts[1].strip() if len(parts) > 1 else ""
+                        record.msg = (
+                            f"{Style.RED}✗{Style.RESET} {error_type} · {error_detail}"
+                        )
+                    else:
+                        record.msg = f"{Style.RED}✗{Style.RESET} {error_msg}"
+
+                # Test logs - keep them informative but concise
+                elif original_name.strip() == "test":
+                    # Keep test logs informative but minimal
+                    record.msg = f"{Style.BLUE}{msg}{Style.RESET}"
+
+            # Use a minimal format for INFO logs
+            return f"{self.formatTime(record, self.datefmt)}  {record.levelname}  {record.name}  {record.getMessage()}"
+
+        # For non-INFO logs (DEBUG, WARNING, ERROR, CRITICAL), use the detailed format
+        else:
+            # Special formatting for HTTP-related logs
+            if hasattr(record, "msg") and isinstance(record.msg, str):
+                msg = record.msg
+
+                # Format HTTP request/response logs with style
+                if "[REQUEST " in msg:
+                    # Balance spacing perfectly with a light touch
+                    record.msg = f"{Style.CYAN}{Style.HTTP_ICON} {Style.RESET} {msg}"
+                elif "[RESPONSE " in msg:
+                    if "Status: 2" in msg or "Status: 3" in msg:
+                        # Success response - subtle but clear indicator
+                        record.msg = (
+                            f"{Style.GREEN}{Style.HTTP_ICON} {Style.RESET} {msg}"
+                        )
+                    else:
+                        # Error response - visually distinct but not overwhelming
+                        record.msg = f"{Style.RED}{Style.HTTP_ICON} {Style.RESET} {msg}"
+                elif "[ERROR " in msg:
                     record.msg = f"{Style.RED}{Style.HTTP_ICON} {Style.RESET} {msg}"
-            elif "[ERROR " in msg:
-                record.msg = f"{Style.RED}{Style.HTTP_ICON} {Style.RESET} {msg}"
 
-        # Emphasizes precision and breathing space
-        formatted = super().format(record)
+            # Emphasizes precision and breathing space
+            formatted = super().format(record)
 
-        # Grid-like structure for errors and warnings
-        if record.levelno >= logging.WARNING:
-            # Add structured spacing before warnings/errors - precisely 80 characters
-            separator = f"\n{Style.GRAY}{'─' * 80}{Style.RESET}\n"
-            formatted = f"{separator}{formatted}"
+            # Grid-like structure for errors and warnings
+            if record.levelno >= logging.WARNING:
+                # Add structured spacing before warnings/errors - precisely 80 characters
+                separator = f"\n{Style.GRAY}{'─' * 80}{Style.RESET}\n"
+                formatted = f"{separator}{formatted}"
 
-            # Add clear spacing after for visual breathing room
-            formatted = f"{formatted}\n"
+                # Add clear spacing after for visual breathing room
+                formatted = f"{formatted}\n"
 
-        return formatted
+            return formatted
 
 
 # ------------- PYTEST HOOKS -------------
@@ -252,14 +375,92 @@ def pytest_unconfigure(config):
         elif hasattr(config, "_session") and hasattr(config._session, "duration"):
             duration = config._session.duration
 
-        # Print our custom summary at the very end
+        # Print the separator line first
         print("\n" + "=" * 80)
+
+        # Add detailed test results table if there are any tests executed
+        if total_tests > 0:
+            # Collect duration info for each test and categorize by status
+            test_info = {}
+            for outcome, reports_list in reports.items():
+                for report in reports_list:
+                    # Only process "call" phase and actual test results
+                    if report.when == "call" or (
+                        report.when == "setup" and report.skipped
+                    ):
+                        nodeid = report.nodeid
+
+                        # Initialize test info if not already present
+                        if nodeid not in test_info:
+                            test_info[nodeid] = {"status": "unknown", "duration": 0.0}
+
+                        # Set status based on outcome
+                        if outcome == "failed" and report.when == "call":
+                            test_info[nodeid]["status"] = "failed"
+                        elif outcome == "passed" and report.when == "call":
+                            test_info[nodeid]["status"] = "passed"
+                        elif outcome == "skipped":
+                            test_info[nodeid]["status"] = "skipped"
+
+                        # Add duration (might be overwritten by call phase, which is what we want)
+                        if hasattr(report, "duration"):
+                            test_info[nodeid]["duration"] = report.duration
+
+            # Print table header with clean separator
+            print(f"{Style.GRAY}TEST RESULTS{Style.RESET}")
+            print(f"{Style.GRAY}{'─' * 80}{Style.RESET}")
+
+            # Calculate column widths
+            status_width = 8
+            duration_width = 10
+            test_width = 60  # Maximum width for test name
+
+            # Print header row
+            print(
+                f"{Style.BOLD}{'STATUS':<{status_width}} {'DURATION':<{duration_width}} {'TEST':<{test_width}}{Style.RESET}"
+            )
+            print(f"{Style.GRAY}{'─' * 80}{Style.RESET}")
+
+            # Sort tests by execution order
+            sorted_tests = sorted(test_info.items(), key=lambda x: x[0])
+
+            # Print each test result
+            for nodeid, info in sorted_tests:
+                # Format test name: remove common prefix and make more readable
+                test_name = nodeid
+                if "::" in test_name:
+                    # Extract just the test function part and any parameters
+                    test_name = test_name.split("::")[-1]
+
+                # Trim if too long
+                if len(test_name) > test_width:
+                    test_name = test_name[: test_width - 3] + "..."
+
+                # Format status with appropriate color
+                if info["status"] == "passed":
+                    status = f"{Style.GREEN}{'✓':<{status_width-1}}{Style.RESET}"
+                elif info["status"] == "failed":
+                    status = f"{Style.RED}{'✗':<{status_width-1}}{Style.RESET}"
+                elif info["status"] == "skipped":
+                    status = f"{Style.YELLOW}{'○':<{status_width-1}}{Style.RESET}"
+                else:
+                    status = f"{Style.GRAY}{'?':<{status_width-1}}{Style.RESET}"
+
+                # Format duration
+                duration_str = f"{info['duration']:.2f}s"
+
+                # Print formatted row
+                print(f"{status} {duration_str:<{duration_width}} {test_name}")
+
+            print(f"{Style.GRAY}{'─' * 80}{Style.RESET}")
+
+        # Print our custom summary after the test results table
         print(
-            f"{Style.GRAY}SUMMARY {Style.RESET}{Style.BOLD}{duration:.2f}s{Style.RESET}  "
-            f"{Style.RED}●{Style.RESET} {failed} failed  "
-            f"{Style.GREEN}●{Style.RESET} {passed} passed  "
-            f"{Style.YELLOW}●{Style.RESET} {skipped} skipped  "
-            f"{Style.BLUE}●{Style.RESET} {total_tests} total"
+            f"{Style.GRAY}SUMMARY · {Style.RESET}{Style.BOLD}{duration:.2f}s{Style.RESET} · "
+            f"{Style.GREEN}✓{Style.RESET} {passed} passed · "
+            f"{Style.RED}✗{Style.RESET} {failed} failed · "
+            f"{Style.YELLOW}○{Style.RESET} {skipped} skipped · "
+            f"{Style.BLUE}{total_tests}{Style.RESET} total"
         )
         print("=" * 80)
 
@@ -284,9 +485,9 @@ def pytest_unconfigure(config):
 # Add a simple hook for test section clarity
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_setup(item):
-    """Add a clean separator before each test."""
+    """Add a clear separator before each test."""
     # Always print a clear separator and the full test name
-    print(f"\n{Style.GRAY}{'═' * 80}{Style.RESET}")
+    print(f"\n{Style.GRAY}{'─' * 80}{Style.RESET}")
     print(f"{Style.BOLD}{item.nodeid}{Style.RESET}\n")
 
 
@@ -361,6 +562,10 @@ def pytest_configure(config):
     config.option.no_header = True
     config.option.no_progressbar = True
 
+    # Completely disable pytest's logging system to prevent duplicates
+    config.option.log_cli = False
+    config.option.log_cli_level = None
+
     # Simplify terminal reporter handling
     terminal = config.pluginmanager.getplugin("terminalreporter")
     if terminal:
@@ -403,15 +608,21 @@ def pytest_configure(config):
 
     # Configure rosetta client logging
     client_logger = logging.getLogger("rosetta_client")
-    client_logger.setLevel(logging.DEBUG)
+    client_logger.setLevel(
+        logging.INFO
+    )  # Only show INFO level logs, keeping details as DEBUG
 
-    # Configure HTTP request logging specifically - set to INFO by default
+    # Configure HTTP request logging specifically
     http_logger = logging.getLogger("rosetta_client.http")
-    http_logger.setLevel(logging.INFO)  # Use INFO by default for cleaner output
+    http_logger.setLevel(logging.INFO)  # Use INFO for HTTP requests
+
+    # Silence wallet_utils messages at INFO level (only show in DEBUG)
+    wallet_logger = logging.getLogger("wallet_utils")
+    wallet_logger.setLevel(logging.WARNING)  # Only show warnings from wallet_utils
 
     # Create a logger for our tests with a more concise name
     test_logger = logging.getLogger("test")
-    test_logger.setLevel(logging.DEBUG)
+    test_logger.setLevel(logging.INFO)  # Show minimal INFO logs by default
 
 
 @pytest.fixture(scope="session")
