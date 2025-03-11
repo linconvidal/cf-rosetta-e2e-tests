@@ -238,6 +238,8 @@ def execute_stake_operation_test(
     required_funds,
     operation_types,
     pool_id=None,
+    drep_id=None,
+    drep_type=None,
 ):
     """
     Execute a stake operation test with the given parameters.
@@ -247,8 +249,10 @@ def execute_stake_operation_test(
         test_wallet: The test wallet instance
         operation_type: Description of the operation for logging
         required_funds: Dictionary with required funds (deposit, fee, min_output)
-        operation_types: List of operation types (registration, delegation, deregistration)
+        operation_types: List of operation types (registration, delegation, deregistration, drepVoteDelegation)
         pool_id: Pool ID for delegation operations
+        drep_id: DRep ID for vote delegation operations (optional for abstain/no_confidence)
+        drep_type: DRep type for vote delegation operations (key_hash, script_hash, abstain, no_confidence)
     """
     logger.debug(f"Testing {operation_type}...")
 
@@ -436,6 +440,34 @@ def execute_stake_operation_test(
                 },
             }
         )
+        op_index += 1
+
+    if "drepVoteDelegation" in operation_types:
+        # Get the stake verification key hex
+        stake_key_hex = test_wallet.get_stake_verification_key_hex()
+
+        # Create the dRepVoteDelegation operation
+        drep_vote_delegation_op = {
+            "operation_identifier": {"index": op_index},
+            "type": "dRepVoteDelegation",
+            "status": "",
+            "account": {"address": stake_address},
+            "metadata": {
+                "staking_credential": {
+                    "hex_bytes": stake_key_hex,
+                    "curve_type": "edwards25519",
+                },
+                "drep": {
+                    "type": drep_type,
+                },
+            },
+        }
+
+        # Add drep.id for key_hash and script_hash types
+        if drep_type in ["key_hash", "script_hash"] and drep_id:
+            drep_vote_delegation_op["metadata"]["drep"]["id"] = drep_id
+
+        operations.append(drep_vote_delegation_op)
         op_index += 1
 
     logger.debug(f"Created {len(operations)} operations")
@@ -635,7 +667,6 @@ def execute_stake_operation_test(
                 logger.error(
                     "Missing payment payload - cannot spend inputs without payment key signature!"
                 )
-
         elif "delegation" in operation_type:
             # For delegation, we need both stake and payment signatures as well
             if stake_payload:
@@ -657,7 +688,32 @@ def execute_stake_operation_test(
                 logger.error(
                     "Missing payment payload - cannot spend inputs without payment key signature!"
                 )
+        elif (
+            "drepVoteDelegation" in operation_type
+            or "DRep vote delegation" in operation_type
+        ):
+            # For DRep vote delegation, we need both stake and payment signatures
+            if stake_payload:
+                logger.debug(
+                    "Adding stake key signature for DRep vote delegation authorization"
+                )
+                stake_signature = test_wallet.sign_with_stake_key(stake_payload)
+                signatures.append(stake_signature)
+            else:
+                logger.error(
+                    "Missing stake payload - cannot delegate votes without stake key signature!"
+                )
 
+            if payment_payload:
+                logger.debug("Adding payment key signature for UTXO spending")
+                payment_signature = test_wallet.sign_transaction_with_payment_key(
+                    payment_payload
+                )
+                signatures.append(payment_signature)
+            else:
+                logger.error(
+                    "Missing payment payload - cannot spend inputs without payment key signature!"
+                )
         else:
             # For standard operations (non-staking), we only need payment key signature
             logger.debug("Standard operation, adding payment key signature only")
@@ -749,6 +805,8 @@ def execute_stake_operation_test(
                 expected_type = "stakeKeyDeregistration"
             elif op_type == "delegation":
                 expected_type = "stakeDelegation"
+            elif op_type == "drepVoteDelegation":
+                expected_type = "dRepVoteDelegation"
 
             assert (
                 expected_type in found_operation_types
@@ -792,6 +850,10 @@ def execute_stake_operation_test(
             validate_stake_key_deregistration(rosetta_client, test_wallet, tx_details)
         elif "delegation" in operation_types:
             validate_stake_delegation(rosetta_client, test_wallet, tx_details, pool_id)
+        elif "drepVoteDelegation" in operation_types:
+            validate_drep_vote_delegation(
+                rosetta_client, test_wallet, tx_details, drep_id, drep_type
+            )
 
         logger.debug("Transaction validation successful")
     except AssertionError as e:
@@ -813,6 +875,8 @@ def build_stake_operations(
     test_wallet,
     operation_types: List[str],
     pool_id: Optional[str] = None,
+    drep_id: Optional[str] = None,
+    drep_type: Optional[str] = None,
 ) -> List[Dict]:
     """
     Build operations array for stake operations.
@@ -821,8 +885,10 @@ def build_stake_operations(
         inputs: List of input UTXOs
         outputs: List of outputs
         test_wallet: PyCardanoWallet instance
-        operation_types: List of operation types to include ("registration", "delegation", or both)
+        operation_types: List of operation types to include ("registration", "delegation", "deregistration", "drepVoteDelegation")
         pool_id: Pool ID for delegation (required if "delegation" in operation_types)
+        drep_id: DRep ID for vote delegation (required for key_hash/script_hash if "drepVoteDelegation" in operation_types)
+        drep_type: DRep type for vote delegation (required if "drepVoteDelegation" in operation_types)
 
     Returns:
         List of operations
@@ -927,6 +993,41 @@ def build_stake_operations(
         }
         operations.append(stake_delegation_op)
 
+    # Add dRepVoteDelegation operation if requested
+    if "drepVoteDelegation" in operation_types:
+        if drep_type not in ["key_hash", "script_hash", "abstain", "no_confidence"]:
+            raise ValueError(
+                "DRep type must be one of: key_hash, script_hash, abstain, no_confidence"
+            )
+
+        # For key_hash and script_hash types, drep_id is required
+        if drep_type in ["key_hash", "script_hash"] and not drep_id:
+            raise ValueError(
+                "DRep ID is required for key_hash and script_hash DRep types"
+            )
+
+        drep_vote_delegation_op = {
+            "operation_identifier": {"index": len(operations)},
+            "type": "dRepVoteDelegation",
+            "status": "",
+            "account": {"address": stake_address},
+            "metadata": {
+                "staking_credential": {
+                    "hex_bytes": stake_key_hex,
+                    "curve_type": "edwards25519",
+                },
+                "drep": {
+                    "type": drep_type,
+                },
+            },
+        }
+
+        # Add drep.id for key_hash and script_hash types
+        if drep_type in ["key_hash", "script_hash"]:
+            drep_vote_delegation_op["metadata"]["drep"]["id"] = drep_id
+
+        operations.append(drep_vote_delegation_op)
+
     return operations
 
 
@@ -936,6 +1037,8 @@ def validate_stake_operations(
     expected_operations: List[str],
     expected_deposit: Optional[int] = None,
     expected_pool_id: Optional[str] = None,
+    expected_drep_id: Optional[str] = None,
+    expected_drep_type: Optional[str] = None,
 ):
     """
     Validate stake operations in a transaction.
@@ -943,9 +1046,11 @@ def validate_stake_operations(
     Args:
         tx_details: Transaction details from get_block_transaction
         test_wallet: PyCardanoWallet instance
-        expected_operations: List of expected operation types ("registration", "delegation", or both)
+        expected_operations: List of expected operation types ("registration", "delegation", "deregistration", "drepVoteDelegation")
         expected_deposit: Expected deposit amount (for registration)
         expected_pool_id: Expected pool ID in hex format (for delegation)
+        expected_drep_id: Expected DRep ID in hex format (for drepVoteDelegation with key_hash/script_hash)
+        expected_drep_type: Expected DRep type (for drepVoteDelegation)
 
     Raises:
         AssertionError: If validation fails
@@ -1044,6 +1149,50 @@ def validate_stake_operations(
             else:
                 logger.warning("Pool key hash not found in metadata")
 
+    # Validate DRep vote delegation if expected
+    if "drepVoteDelegation" in expected_operations:
+        # Find DRep vote delegation operation
+        drep_vote_delegation_ops = [
+            op for op in onchain_ops if op["type"] == "dRepVoteDelegation"
+        ]
+        assert (
+            len(drep_vote_delegation_ops) == 1
+        ), f"Expected 1 dRepVoteDelegation operation, got {len(drep_vote_delegation_ops)}"
+
+        drep_vote_delegation_op = drep_vote_delegation_ops[0]
+
+        # Validate stake address
+        assert (
+            drep_vote_delegation_op["account"]["address"] == stake_address
+        ), "Stake address mismatch"
+
+        # Validate DRep type if expected
+        if expected_drep_type and "metadata" in drep_vote_delegation_op:
+            if "drep" in drep_vote_delegation_op["metadata"]:
+                drep_type = drep_vote_delegation_op["metadata"]["drep"]["type"]
+                assert (
+                    drep_type == expected_drep_type
+                ), f"DRep type mismatch: expected {expected_drep_type}, got {drep_type}"
+            else:
+                logger.warning("DRep type not found in metadata")
+
+        # Validate DRep ID if expected (only for key_hash and script_hash types)
+        if (
+            expected_drep_id
+            and expected_drep_type in ["key_hash", "script_hash"]
+            and "metadata" in drep_vote_delegation_op
+        ):
+            if (
+                "drep" in drep_vote_delegation_op["metadata"]
+                and "id" in drep_vote_delegation_op["metadata"]["drep"]
+            ):
+                drep_id = drep_vote_delegation_op["metadata"]["drep"]["id"]
+                assert (
+                    drep_id == expected_drep_id
+                ), f"DRep ID mismatch: expected {expected_drep_id}, got {drep_id}"
+            else:
+                logger.warning("DRep ID not found in metadata")
+
     # Validate input and output operations
     input_ops = [op for op in onchain_ops if op["type"] == "input"]
     output_ops = [op for op in onchain_ops if op["type"] == "output"]
@@ -1105,6 +1254,14 @@ def construct_transaction_with_operations(
         is_deregistration = any(
             op["type"] == "stakeKeyDeregistration" for op in operations
         )
+
+        # Identify if this is a DRep vote delegation operation
+        is_drep_vote_delegation = any(
+            op["type"] == "dRepVoteDelegation" for op in operations
+        )
+
+        if is_drep_vote_delegation:
+            logger.debug("This is a DRep vote delegation operation")
 
         # For deregistration, we expect a 2 ADA refund
         refund_amount = 0
@@ -1905,5 +2062,123 @@ def validate_stake_key_deregistration(rosetta_client, test_wallet, tx_details):
         return True
     except Exception as e:
         logger.error(f"✗ Error validating stake key deregistration: {str(e)}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+def validate_drep_vote_delegation(
+    rosetta_client, test_wallet, tx_details, drep_id, drep_type
+):
+    """
+    Validate that a DRep vote delegation was successful by checking:
+    1. The transaction contains a dRepVoteDelegation operation/certificate
+    2. The stake address is now recognized on-chain (can query balance)
+    3. The deposit amount was correctly applied
+    """
+    logger.debug("Validating DRep vote delegation...")
+
+    try:
+        # Log the full transaction details for debugging
+        logger.debug(f"Transaction details: {tx_details}")
+
+        # 1. Check that the transaction contains a dRepVoteDelegation operation or certificate
+        found_drep_vote_delegation = False
+        deposit_amount = None
+
+        # First check in operations (primary source)
+        if "transaction" in tx_details and "operations" in tx_details["transaction"]:
+            operations = tx_details["transaction"]["operations"]
+            for op in operations:
+                if op.get("type") == "dRepVoteDelegation":
+                    found_drep_vote_delegation = True
+                    logger.debug("Found dRepVoteDelegation operation")
+                    # Check for depositAmount in operation metadata
+                    if "metadata" in op:
+                        if "depositAmount" in op["metadata"]:
+                            deposit_info = op["metadata"]["depositAmount"]
+                            if (
+                                isinstance(deposit_info, dict)
+                                and "value" in deposit_info
+                            ):
+                                deposit_amount = int(deposit_info["value"])
+                            else:
+                                deposit_amount = int(deposit_info)
+                            logger.debug(
+                                f"Found deposit amount in operation: {deposit_amount}"
+                            )
+                        elif "deposit" in op["metadata"]:
+                            deposit_amount = int(op["metadata"]["deposit"])
+                            logger.debug(
+                                f"Found deposit in operation: {deposit_amount}"
+                            )
+
+        # 2. Fall back to checking certificates in metadata (legacy format)
+        if not found_drep_vote_delegation:
+            metadata = tx_details.get("metadata", {})
+            logger.debug(f"Transaction metadata: {metadata}")
+            certificates = metadata.get("certificates", [])
+            logger.debug(f"Certificates: {certificates}")
+
+            for cert in certificates:
+                if cert.get("type") == "dRepVoteDelegation":
+                    found_drep_vote_delegation = True
+                    logger.debug("Found dRepVoteDelegation certificate")
+                    break
+
+        assert (
+            found_drep_vote_delegation
+        ), "DRep vote delegation operation/certificate not found in transaction"
+
+        # 2. Verify the stake address is now recognized on-chain
+        logger.debug(
+            f"Verifying stake address {test_wallet.get_stake_address()} is registered"
+        )
+        try:
+            account_info = rosetta_client.get_balance(
+                address=test_wallet.get_stake_address()
+            )
+            logger.debug(f"Account info: {account_info}")
+            assert (
+                account_info is not None
+            ), "Failed to retrieve account info for registered stake address"
+            logger.debug("Stake address successfully registered and accessible")
+        except Exception as e:
+            error_msg = f"Failed to verify stake address registration: {str(e)}"
+            logger.error(error_msg)
+            logger.debug(f"Traceback: {traceback.format_exc()}")
+            assert False, error_msg
+
+        # 3. Check that the deposit amount was correctly applied
+        # If we haven't found deposit in operations, try transaction metadata
+        if deposit_amount is None:
+            metadata = tx_details.get("metadata", {})
+            if "depositAmount" in metadata:
+                deposit_amount = metadata["depositAmount"]
+                logger.debug(f"Found deposit amount in metadata: {deposit_amount}")
+                if isinstance(deposit_amount, dict) and "value" in deposit_amount:
+                    deposit_amount = int(deposit_amount["value"])
+                else:
+                    deposit_amount = int(deposit_amount)
+            elif "deposit" in metadata:
+                deposit_amount = metadata["deposit"]
+                logger.debug(f"Found deposit in metadata: {deposit_amount}")
+                deposit_amount = int(deposit_amount)
+
+        # Some implementations might not include deposit explicitly
+        # In that case, we'll log a warning but not fail the test
+        if deposit_amount is not None:
+            assert (
+                deposit_amount == 2_000_000
+            ), f"Unexpected deposit amount: {deposit_amount}, expected 2000000"
+            logger.debug(f"Deposit amount verified: {deposit_amount}")
+        else:
+            logger.warning(
+                "Deposit amount not explicitly found in metadata (implementation-dependent)"
+            )
+
+        logger.debug("DRep vote delegation validation successful")
+        return True
+    except Exception as e:
+        logger.error(f"✗ Error validating DRep vote delegation: {str(e)}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
         raise

@@ -190,15 +190,217 @@ def test_scenario2_combined_registration_delegation(rosetta_client, test_wallet)
 
 
 @pytest.mark.order(5)
+def test_scenario2_drep_vote_delegation_abstain(rosetta_client, test_wallet):
+    """
+    Scenario 2, Step 2: DRep Vote Delegation - Abstain
+
+    Test DRep vote delegation to Abstain using the Rosetta Construction API.
+    This test assumes that the stake key is already registered from the previous step.
+    """
+    logger.info("⬧ Scenario 2.2: DRep Vote Delegation » Type: abstain")
+
+    # Check if stake key is already registered by querying account
+    stake_address = test_wallet.get_stake_address()
+    logger.debug(f"Using stake address: {stake_address}")
+    try:
+        # Try to get account information
+        account_info = rosetta_client.get_balance(address=stake_address)
+        logger.debug(f"Stake key is registered as expected: {account_info}")
+    except Exception as e:
+        # If we get an error, the stake key is likely not registered
+        logger.error(f"✗ Stake key not registered: {str(e)}")
+        pytest.skip(
+            "Stake key must be registered before vote delegation. Run test_scenario2_combined_registration_delegation first."
+        )
+
+    try:
+        logger.info("▹ Executing DRep vote delegation operation - Abstain")
+        execute_stake_operation_test(
+            rosetta_client=rosetta_client,
+            test_wallet=test_wallet,
+            operation_type="DRep vote delegation",
+            required_funds={
+                "fee": 200_000,  # 0.2 ADA initial estimate for UTXO selection
+                "min_output": 1_000_000,  # 1 ADA minimum for outputs
+            },
+            operation_types=["drepVoteDelegation"],
+            pool_id=None,  # Not used for DRep vote delegation
+            drep_id=None,  # Not needed for abstain
+            drep_type="abstain",
+        )
+        logger.info("✓ Vote delegated to DRep type: abstain")
+    except Exception as e:
+        logger.error(f"✗ DRep vote delegation failed: {str(e)}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+@pytest.mark.order(6)
+def test_scenario2_drep_vote_delegation_no_confidence(rosetta_client, test_wallet):
+    """
+    Scenario 2, Step 3: DRep Vote Delegation - No Confidence
+
+    Test DRep vote delegation to No Confidence using the Rosetta Construction API.
+    This test assumes that the stake key is already registered from the previous steps.
+    """
+    logger.info("⬧ Scenario 2.3: DRep Vote Delegation » Type: no_confidence")
+
+    # Check if stake key is already registered by querying account
+    stake_address = test_wallet.get_stake_address()
+    logger.debug(f"Using stake address: {stake_address}")
+    try:
+        # Try to get account information
+        account_info = rosetta_client.get_balance(address=stake_address)
+        logger.debug(f"Stake key is registered as expected: {account_info}")
+    except Exception as e:
+        # If we get an error, the stake key is likely not registered
+        logger.error(f"✗ Stake key not registered: {str(e)}")
+        pytest.skip(
+            "Stake key must be registered before vote delegation. Run test_scenario2_combined_registration_delegation first."
+        )
+
+    try:
+        logger.info("▹ Executing DRep vote delegation operation - No Confidence")
+        execute_stake_operation_test(
+            rosetta_client=rosetta_client,
+            test_wallet=test_wallet,
+            operation_type="DRep vote delegation",
+            required_funds={
+                "fee": 200_000,  # 0.2 ADA initial estimate for UTXO selection
+                "min_output": 1_000_000,  # 1 ADA minimum for outputs
+            },
+            operation_types=["drepVoteDelegation"],
+            pool_id=None,  # Not used for DRep vote delegation
+            drep_id=None,  # Not needed for no_confidence
+            drep_type="no_confidence",
+        )
+        logger.info("✓ Vote delegated to DRep type: no_confidence")
+    except Exception as e:
+        logger.error(f"✗ DRep vote delegation failed: {str(e)}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+@pytest.mark.order(7)
+def test_scenario2_drep_vote_delegation_key_hash(rosetta_client, test_wallet):
+    """
+    Scenario 2, Step 4: DRep Vote Delegation - Key Hash
+
+    Test DRep vote delegation to a specific DRep (key hash) using the Rosetta Construction API.
+    This test assumes that the stake key is already registered from the previous steps.
+    """
+    # Check if DREP_KEY_HASH_ID is set
+    drep_id = os.getenv("DREP_KEY_HASH_ID")
+    if not drep_id:
+        pytest.skip(
+            "DREP_KEY_HASH_ID environment variable is required for DRep vote delegation tests with type key_hash"
+        )
+
+    logger.info(
+        f"⬧ Scenario 2.4: DRep Vote Delegation » Type: key_hash, ID: {drep_id[:8]}..."
+    )
+
+    # Check if stake key is already registered by querying account
+    stake_address = test_wallet.get_stake_address()
+    logger.debug(f"Using stake address: {stake_address}")
+    try:
+        # Try to get account information
+        account_info = rosetta_client.get_balance(address=stake_address)
+        logger.debug(f"Stake key is registered as expected: {account_info}")
+    except Exception as e:
+        # If we get an error, the stake key is likely not registered
+        logger.error(f"✗ Stake key not registered: {str(e)}")
+        pytest.skip(
+            "Stake key must be registered before vote delegation. Run test_scenario2_combined_registration_delegation first."
+        )
+
+    try:
+        logger.info("▹ Executing DRep vote delegation operation - Key Hash")
+        execute_stake_operation_test(
+            rosetta_client=rosetta_client,
+            test_wallet=test_wallet,
+            operation_type="DRep vote delegation",
+            required_funds={
+                "fee": 200_000,  # 0.2 ADA initial estimate for UTXO selection
+                "min_output": 1_000_000,  # 1 ADA minimum for outputs
+            },
+            operation_types=["drepVoteDelegation"],
+            pool_id=None,  # Not used for DRep vote delegation
+            drep_id=drep_id,
+            drep_type="key_hash",
+        )
+        logger.info(f"✓ Vote delegated to DRep type: key_hash, ID: {drep_id[:8]}...")
+    except Exception as e:
+        logger.error(f"✗ DRep vote delegation failed: {str(e)}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+@pytest.mark.order(8)
+def test_scenario2_drep_vote_delegation_script_hash(rosetta_client, test_wallet):
+    """
+    Scenario 2, Step 5: DRep Vote Delegation - Script Hash
+
+    Test DRep vote delegation to a specific DRep (script hash) using the Rosetta Construction API.
+    This test assumes that the stake key is already registered from the previous steps.
+    """
+    # Check if DREP_SCRIPT_HASH_ID is set
+    drep_id = os.getenv("DREP_SCRIPT_HASH_ID")
+    if not drep_id:
+        pytest.skip(
+            "DREP_SCRIPT_HASH_ID environment variable is required for DRep vote delegation tests with type script_hash"
+        )
+
+    logger.info(
+        f"⬧ Scenario 2.5: DRep Vote Delegation » Type: script_hash, ID: {drep_id[:8]}..."
+    )
+
+    # Check if stake key is already registered by querying account
+    stake_address = test_wallet.get_stake_address()
+    logger.debug(f"Using stake address: {stake_address}")
+    try:
+        # Try to get account information
+        account_info = rosetta_client.get_balance(address=stake_address)
+        logger.debug(f"Stake key is registered as expected: {account_info}")
+    except Exception as e:
+        # If we get an error, the stake key is likely not registered
+        logger.error(f"✗ Stake key not registered: {str(e)}")
+        pytest.skip(
+            "Stake key must be registered before vote delegation. Run test_scenario2_combined_registration_delegation first."
+        )
+
+    try:
+        logger.info("▹ Executing DRep vote delegation operation - Script Hash")
+        execute_stake_operation_test(
+            rosetta_client=rosetta_client,
+            test_wallet=test_wallet,
+            operation_type="DRep vote delegation",
+            required_funds={
+                "fee": 200_000,  # 0.2 ADA initial estimate for UTXO selection
+                "min_output": 1_000_000,  # 1 ADA minimum for outputs
+            },
+            operation_types=["drepVoteDelegation"],
+            pool_id=None,  # Not used for DRep vote delegation
+            drep_id=drep_id,
+            drep_type="script_hash",
+        )
+        logger.info(f"✓ Vote delegated to DRep type: script_hash, ID: {drep_id[:8]}...")
+    except Exception as e:
+        logger.error(f"✗ DRep vote delegation failed: {str(e)}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+@pytest.mark.order(9)
 def test_scenario2_stake_key_deregistration(rosetta_client, test_wallet):
     """
-    Scenario 2, Step 2: Deregistration
+    Scenario 2, Step 6: Deregistration
 
     Test stake key deregistration using the Rosetta Construction API.
 
     This test should be run after the combined registration and delegation test.
     """
-    logger.info("⬧ Scenario 2.2: Stake Key Deregistration")
+    logger.info("⬧ Scenario 2.6: Stake Key Deregistration")
 
     # Check if stake key is registered by querying account
     stake_address = test_wallet.get_stake_address()

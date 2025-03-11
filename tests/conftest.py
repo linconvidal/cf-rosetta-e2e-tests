@@ -608,13 +608,11 @@ def pytest_configure(config):
 
     # Configure rosetta client logging
     client_logger = logging.getLogger("rosetta_client")
-    client_logger.setLevel(
-        logging.INFO
-    )  # Only show INFO level logs, keeping details as DEBUG
+    client_logger.setLevel(logging.DEBUG)
 
     # Configure HTTP request logging specifically
     http_logger = logging.getLogger("rosetta_client.http")
-    http_logger.setLevel(logging.INFO)  # Use INFO for HTTP requests
+    http_logger.setLevel(logging.DEBUG)
 
     # Silence wallet_utils messages at INFO level (only show in DEBUG)
     wallet_logger = logging.getLogger("wallet_utils")
